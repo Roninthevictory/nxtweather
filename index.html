@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Weather Radar</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background-color: #0d1117; color: white; }
+    #radar-header {
+      padding: 10px; background-color: #161b22;
+      display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;
+    }
+    #legend {
+      background: #0d1117; padding: 5px 10px;
+      font-size: 14px; border: 1px solid #333; border-radius: 5px;
+    }
+    .legend-item { margin-right: 10px; display: inline-block; }
+    .legend-box {
+      width: 12px; height: 12px; display: inline-block;
+      margin-right: 4px; vertical-align: middle;
+    }
+    #warning-count { font-size: 16px; }
+    #locate-me {
+      background-color: #238636; color: white; border: none;
+      padding: 6px 12px; cursor: pointer; border-radius: 5px;
+    }
+    #map { height: 100vh; width: 100%; }
+  </style>
+</head>
+<body>
+  <div id="radar-header">
+    <div id="legend">
+      <span class="legend-item"><span class="legend-box" style="background: purple;"></span> Tornado</span>
+      <span class="legend-item"><span class="legend-box" style="background: blue;"></span> Flash Flood</span>
+      <span class="legend-item"><span class="legend-box" style="background: gray;"></span> Thunderstorm</span>
+    </div>
+    <div id="warning-count">Loading alerts...</div>
+    <button id="locate-me">📍 My Location</button>
+  </div>
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+  <script>
+    const map = L.map('map').setView([39.8283, -98.5795], 4);
+    const baseLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+
+    const radarGroup = L.layerGroup().addTo(map);
+    const stormLayer = L.geoJSON(null, {
+      style: feature => {
+        const type = feature.properties.event.toLowerCase();
+        if (type.includes("tornado")) return { color: "purple", fillOpacity: 0.3 };
+        if (type.includes("flash flood")) return { color: "blue", fillOpacity: 0.3 };
+        if (type.includes("thunderstorm")) return { color: "gray", fillOpacity: 0.3 };
+        return { color: "#ff5733", fillOpacity: 0.2 };
+      },
+      onEachFeature: (feature, layer) => {
+        const props = feature.properties;
+        layer.bindPopup(`<b>${props.event}</b><br>${props.headline}<br>${props.areaDesc}`);
+      }
+    }).addTo(map);
+
+    let radarTimestamps = [];
+    let radarFrameIndex = 0;
+    let currentRadarLayer = null;
+    let radarAnimationInterval = null;
+
+    // Fetching data for different radar overlays
+    const radarLayers = {
+      "Precipitation (Rain/Snow)": {
+        url: "https://tilecache.rainviewer.com/v2/radar/{z}/{x}/{y}/2/1_1.png",
+        opacity: 0.5,
+      },
+      "Severe Weather (Warnings)": {
+        url: "https://tilecache.rainviewer.com/v2/warnings/{z}/{x}/{y}/2/1_1.png",
+        opacity: 0.7,
+      },
+      "Wind": {
+        url: "https://tilecache.rainviewer.com/v2/wind/{z}/{x}/{y}/2/1_1.png",
+        opacity: 0.5,
+      },
+      "Lightning": {
+        url: "https://tilecache.rainviewer.com/v2/lightning/{z}/{x}/{y}/2/1_1.png",
+        opacity: 0.7,
+      },
+      "Temperature": {
+        url: "https://tilecache.rainviewer.com/v2/temperature/{z}/{x}/{y}/2/1_1.png",
+        opacity: 0.5,
+      },
+      "Cloud Coverage": {
+        url: "https://tilecache.rainviewer.com/v2/clouds/{z}/{x}/{y}/2/1_1.png",
+        opacity: 0.6,
+      },
+    };
+
+    // Add radar layers to map
+    const overlayLayers = {};
+    Object.keys(radarLayers).forEach((layerName) => {
+      const layerData = radarLayers[layerName];
+      overlayLayers[layerName] = L.tileLayer(layerData.url, {
+        opacity: layerData.opacity,
+      });
+    });
+
+    // Adding storm warning polygons
+    function loadNOAAAlerts() {
+      fetch("https://api.weather.gov/alerts/active")
+        .then(res => res.json())
+        .then(data => {
+          let tornadoCount = 0;
+          let warningCount = 0;
+          let stormFeatures = [];
+
+          data.features.forEach(alert => {
+            const type = alert.properties.event.toLowerCase();
+            if (type.includes("tornado")) tornadoCount++;
+            if (type.includes("warning")) warningCount++;
+            if (alert.geometry) stormFeatures.push(alert);
+          });
+
+          stormLayer.clearLayers();
+          stormLayer.addData(stormFeatures);
+          document.getElementById("warning-count").textContent =
+            `⚠️ Tornado Warnings: ${tornadoCount} | All Warnings: ${warningCount}`;
+        });
+    }
+
+    // Location Button
+    document.getElementById("locate-me").addEventListener("click", () => {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(pos => {
+          const lat = pos.coords.latitude;
+          const lon = pos.coords.longitude;
+          map.setView([lat, lon], 9);
+          L.circleMarker([lat, lon], {
+            radius: 6, color: "blue"
+          }).addTo(map).bindPopup("You are here").openPopup();
+        });
+      } else {
+        alert("Geolocation not supported.");
+      }
+    });
+
+    // Adding geolocation search
+    L.Control.geocoder().addTo(map);
+
+    // Add Layer Control
+    L.control.layers(
+      { "Base Map": baseLayer },
+      overlayLayers
+    ).addTo(map);
+
+    // Init
+    loadNOAAAlerts();
+    setInterval(loadNOAAAlerts, 60000); // update alerts every minute
+
+    // Refresh every 5 mins to get new radar layers
+    setInterval(() => {
+      Object.keys(overlayLayers).forEach((layerName) => {
+        overlayLayers[layerName].addTo(map);
+      });
+    }, 5 * 60 * 1000);
+  </script>
+</body>
+</html>
