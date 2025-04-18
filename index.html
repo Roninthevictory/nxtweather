@@ -1,4 +1,4 @@
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
@@ -76,29 +76,30 @@
 
     let currentRadarLayer = null;
 
+    // Radar layer URLs (Live data, placeholder URLs)
     const radarLayers = {
       "Precipitation": {
-        url: "https://tilecache.rainviewer.com/v2/radar/{z}/{x}/{y}/2/1_1.png",
+        url: "https://tilecache.rainviewer.com/v2/radar/{z}/{x}/{y}/2/1_1.png", // Example live precipitation radar URL
         opacity: 0.5,
       },
       "Severe Weather": {
-        url: "https://tilecache.rainviewer.com/v2/warnings/{z}/{x}/{y}/2/1_1.png",
+        url: "https://tilecache.rainviewer.com/v2/warnings/{z}/{x}/{y}/2/1_1.png", // Example live severe weather warnings URL
         opacity: 0.7,
       },
       "Wind": {
-        url: "https://tilecache.rainviewer.com/v2/wind/{z}/{x}/{y}/2/1_1.png",
+        url: "https://tilecache.rainviewer.com/v2/wind/{z}/{x}/{y}/2/1_1.png", // Example live wind radar URL
         opacity: 0.5,
       },
       "Lightning": {
-        url: "https://tilecache.rainviewer.com/v2/lightning/{z}/{x}/{y}/2/1_1.png",
+        url: "https://tilecache.rainviewer.com/v2/lightning/{z}/{x}/{y}/2/1_1.png", // Example live lightning radar URL
         opacity: 0.7,
       },
       "Temperature": {
-        url: "https://tilecache.rainviewer.com/v2/temperature/{z}/{x}/{y}/2/1_1.png",
+        url: "https://tilecache.rainviewer.com/v2/temperature/{z}/{x}/{y}/2/1_1.png", // Example live temperature radar URL
         opacity: 0.5,
       },
       "Cloud Coverage": {
-        url: "https://tilecache.rainviewer.com/v2/clouds/{z}/{x}/{y}/2/1_1.png",
+        url: "https://tilecache.rainviewer.com/v2/clouds/{z}/{x}/{y}/2/1_1.png", // Example live cloud coverage radar URL
         opacity: 0.6,
       },
     };
@@ -115,6 +116,8 @@
       // Create the new layer
       currentRadarLayer = L.tileLayer(layerData.url, {
         opacity: layerData.opacity,
+        updateWhenZooming: true, // Keep layer updated during zooms
+        updateWhenIdle: true,    // Update the layer when idle
       }).addTo(radarGroup);
     }
 
@@ -157,16 +160,42 @@
           let warningCount = 0;
           data.features.forEach(alert => {
             const type = alert.properties.event.toLowerCase();
-            if (type.includes("tornado")) tornadoCount++;
-            if (type.includes("warning")) warningCount++;
+            const coordinates = alert.geometry.coordinates[0];
+
+            let color = "gray"; // Default color for unknown warning type
+            if (type.includes("tornado")) {
+              tornadoCount++;
+              color = "purple";
+            }
+            if (type.includes("flash flood")) {
+              color = "blue";
+            }
+            if (type.includes("thunderstorm")) {
+              color = "gray";
+            }
+
+            const polygon = L.polygon(coordinates.map(coord => [coord[1], coord[0]]), {
+              color: color,
+              fillColor: color,
+              fillOpacity: 0.3,
+              weight: 2,
+            }).addTo(map);
+
+            polygon.bindPopup(`${alert.properties.event}: ${alert.properties.headline}`);
           });
           document.getElementById("warning-count").textContent =
             `⚠️ Tornado Warnings: ${tornadoCount} | All Warnings: ${warningCount}`;
         });
     }
 
+    // Load the alerts every 60 seconds
     loadNOAAAlerts();
     setInterval(loadNOAAAlerts, 60000); // update alerts every minute
+
+    // Force automatic map updates every 5 seconds
+    setInterval(() => {
+      loadRadarLayer(currentRadarLayer.options.layerName);  // Re-load the current layer
+    }, 5000);  // Auto-refresh every 5 seconds
 
   </script>
 </body>
