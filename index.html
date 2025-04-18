@@ -164,6 +164,14 @@
         overlayLayers[layerName].addTo(map);
       });
     }, 5 * 60 * 1000);
+
+    // Auto-refresh radar every 10 seconds
+    setInterval(() => {
+      Object.keys(overlayLayers).forEach((layerName) => {
+        overlayLayers[layerName].addTo(map);
+      });
+    }, 10000); // Update every 10 seconds for demo purposes
+
   </script>
 </body>
 </html>
